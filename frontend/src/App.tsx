@@ -39,7 +39,7 @@ function App() {
 
   return (
     <div className="app">
-      <h1>Items Recommender</h1>
+      <h1>Who should I hire ?</h1>
       <div className="search-bar">
         <input
           type="text"
@@ -48,7 +48,7 @@ function App() {
           onChange={(e) => setQuery(e.target.value)}
         />
         <button onClick={handleSearch} disabled={loading}>
-          {loading ? "Searching..." : "Semantic Search"}
+          {loading ? "Searching..." : "Find my next employee"}
         </button>
       </div>
 

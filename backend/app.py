@@ -94,7 +94,7 @@ def format_name(name: str) -> str:
     Format the name of the celebrity so that it is nice in the UI.
     """
     # Remove unwanted characters
-    name = name.replace('\n', ' ').replace('\r', '').replace('\t', '').replace(',', '').strip()
+    name = name.replace('\n', ' ').replace('\r', '').replace('\t', '').replace('-', ' ').strip()
     # Limit the size of the name to 50 characters
     # If longer than 50 characters, truncate it and add "..."
     if len(name) > 100:
@@ -110,10 +110,13 @@ def get_celebs_from_indices(indices: list, celeb_to_text: dict) -> dict:
     # Parse the json lines and extract the relevant fields
     selected_celebs = {}
     for local_index, db_index in enumerate(indices):
+        print("Preparing celebrity", local_index + 1, "of", len(indices))
         celeb_key = list(celeb_to_text.keys())[db_index]
-        celeb_resume_content = celeb_to_text[celeb_name]
+        print("Celebrity : ", celeb_key)
+        celeb_resume_content = celeb_to_text[celeb_key]
         celeb_name = format_name(celeb_key)
         # Create a dictionary entry with the relevant fields
+        print(f"{RESUME_FOLDER}/{celeb_key}.png")
         selected_celebs[db_index] = {
             "name":celeb_name,
             "path_to_png": f"{RESUME_FOLDER}/{celeb_key}.png",
