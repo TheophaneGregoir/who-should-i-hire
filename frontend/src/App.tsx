@@ -2,7 +2,7 @@ import { useState } from "react";
 import "./App.css";
 
 type ImageItem = {
-  path_to_png: string;
+  png_base64: string;
   name: string;
 };
 
@@ -58,7 +58,10 @@ function App() {
         {images.map((item, idx) => (
           <div className="card" key={idx}>
             <p>{item.name}</p>
-            <img src={item.path_to_png} alt={item.name} />
+            <img
+              src={`data:image/png;base64,${item.png_base64}`}
+              alt={item.name}
+            />
           </div>
         ))}
       </div>
