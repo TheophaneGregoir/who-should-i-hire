@@ -5,13 +5,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import faiss
-import json
 import numpy as np
 from openai import OpenAI
 import cohere
 import time
-import torch
-import open_clip
 import pickle
 
 DATA_PATH = os.environ["DATA_PATH"]
