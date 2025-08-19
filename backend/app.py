@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import base64
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -115,15 +116,20 @@ def get_celebs_from_indices(indices: list, celeb_to_text: dict) -> dict:
         print("Celebrity : ", celeb_key)
         celeb_resume_content = celeb_to_text[celeb_key]
         celeb_name = format_name(celeb_key)
+        image_path = f"{RESUME_FOLDER}/{celeb_key}.png"
+        print(image_path)
+        # Read the image and encode it as base64 so it can be sent directly
+        with open(image_path, "rb") as image_file:
+            image_bytes = image_file.read()
+        encoded_png = base64.b64encode(image_bytes).decode("utf-8")
         # Create a dictionary entry with the relevant fields
-        print(f"{RESUME_FOLDER}/{celeb_key}.png")
         selected_celebs[db_index] = {
-            "name":celeb_name,
-            "path_to_png": f"{RESUME_FOLDER}/{celeb_key}.png",
+            "name": celeb_name,
+            "png_base64": encoded_png,
             "resume_content": celeb_resume_content,
         }
     print("Retrieving done.")
-    return selected_celebs 
+    return selected_celebs
 
 def rerank_items(cohere_client: cohere.Client, top_n: int, query: str, indices: list, celeb_to_text: dict) -> list:
     """
