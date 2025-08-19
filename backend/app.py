@@ -1,27 +1,26 @@
 import os
 from pathlib import Path
+import base64
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import faiss
-import json
 import numpy as np
 from openai import OpenAI
 import cohere
 import time
-import torch
-import open_clip
+import pickle
 
 DATA_PATH = os.environ["DATA_PATH"]
 FAISS_TEXT_VECTOR_DB_PATH = os.environ["FAISS_TEXT_VECTOR_DB_PATH"]
-FAISS_IMAGE_VECTOR_DB_PATH = os.environ["FAISS_IMAGE_VECTOR_DB_PATH"]
-AMAZON_FASHION_FILE = os.environ["AMAZON_FASHION_FILE"]
+CELEB_TO_TEXT_PATH = os.environ["CELEB_TO_TEXT_PATH"]
+RESUME_FOLDER = os.environ["RESUME_FOLDER"]
 OPENAI_EMBEDDING_MODEL = os.environ["OPENAI_EMBEDDING_MODEL"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 COHERE_API_KEY = os.environ["COHERE_API_KEY"]
 NUMBER_OF_RETRIEVED_ITEMS = 100
-NUMBER_OF_OUTPUT_ITEMS = 10
+NUMBER_OF_OUTPUT_ITEMS = 5
 
 # FastAPI app initialization
 app = FastAPI()
@@ -47,44 +46,36 @@ class QueryRequest(BaseModel):
 def load_vector_db(path: str) -> faiss.Index:
     """
     Load the FAISS vector database from the specified path.
-    This FAISS index was precomputed using the embeddings of 100K items from the Amazon Fashion dataset.
-    For more details, refer to the README file in the repository.
+    This FAISS index was precomputed using the embeddings of 800+ resume extracted with Mistral OCR.
     """
     print(f"Loading FAISS vector DB from {path}")
     index = faiss.read_index(path)
     print("FAISS vector DB loaded")
     return index
 
-def load_CLIP_model() -> open_clip.model:
+def load_dict(path: str) -> dict:
     """
-    Load the CLIP model for text embedding to compare with images.
-    This same model is used to compute the embeddings of the images in the dataset.
+    Load a dictionary from a pickle file.
+    This dictionary maps celebrity names to their text descriptions.
     """
-    print(f"Loading CLIP model")
-    model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='laion2b_s34b_b79k')
-    model = model.to("cpu").eval()
-    print("CLIP model loaded")
-    return model
+    print(f"Loading dictionary from {path}")
+    with open(path, 'rb') as f:
+        data = pickle.load(f)
+    print("Dictionary loaded")
+    return data
 
-def embed_query(openai_client: OpenAI, model: open_clip.model, query: str, mode: str) -> np.ndarray:
+def embed_query(openai_client: OpenAI, query: str) -> np.ndarray:
     """
-    Embed the user's query using OpenAI's text embedding model 
-    or OpenAI's CLIP model depemnding on the mode (text or image).
+    Embed the user's query using OpenAI's text embedding model.
     """
     print("Start embedding the query...")
-    if mode == "text":
-        response = openai_client.embeddings.create(
-            input=query,
-            model=OPENAI_EMBEDDING_MODEL
-        )
-        # Get embeddings from the response
-        embeds = np.array(response.data[0].embedding).reshape(1, -1)
-    elif mode == "image":
-        with torch.no_grad():
-            text_tokens = open_clip.tokenize([query]).to("cpu")
-            embeds = model.encode_text(text_tokens).cpu().numpy().astype('float32')
-            embeds /= np.linalg.norm(embeds)  # normalize for cosine similarity
-    print(f"Query embedded in MODE : {mode}")
+    response = openai_client.embeddings.create(
+        input=query,
+        model=OPENAI_EMBEDDING_MODEL
+    )
+    # Get embeddings from the response
+    embeds = np.array(response.data[0].embedding).reshape(1, -1)
+    print(f"Query embedded with model : {OPENAI_EMBEDDING_MODEL}")
     return embeds
 
 def retrieve_indices(index: faiss.Index, query_vector: np.ndarray, k: int) -> list:
@@ -99,64 +90,59 @@ def retrieve_indices(index: faiss.Index, query_vector: np.ndarray, k: int) -> li
     print(f"Retrieved {len(indices.tolist()[0])} similar items")
     return indices.tolist()[0]
 
-def format_title(title: str) -> str:
+def format_name(name: str) -> str:
     """
-    Format the title of the Amazon item so that it is nice in the UI.
+    Format the name of the celebrity so that it is nice in the UI.
     """
     # Remove unwanted characters
-    title = title.replace('\n', ' ').replace('\r', '').replace('\t', '').strip()
-    # Limit the size of the title to 50 characters
+    name = name.replace('\n', ' ').replace('\r', '').replace('\t', '').replace('-', ' ').strip()
+    # Limit the size of the name to 50 characters
     # If longer than 50 characters, truncate it and add "..."
-    if len(title) > 50:
-        title = title[:47] + "..."
-    return title
+    if len(name) > 100:
+        name = name[:97] + "..."
+    return name
 
-def get_items_from_indices(indices: list) -> dict:
+def get_celebs_from_indices(indices: list, celeb_to_text: dict) -> dict:
     """
-    Get the items from the jsonl file using a list of indices.
-    The jsonl file contains the Amazon Fashion dataset.
+    Get the resumes from the stored using a list of indices.
+    /data/resume folder contains all the actual resumes.
     Each line is a JSON object representing an item.
     """
-    # Read the line of jsonl file corresponding to the indices
-    print("Reading the retrieved items from the jsonl file...")
-    items = {}
-    # Extract the lines from the jsonl file using the indices
-    with open(AMAZON_FASHION_FILE, 'r') as f:
-        lines = f.readlines()
-        extracted_lines = [lines[i] for i in indices]
-        f.close()
     # Parse the json lines and extract the relevant fields
+    selected_celebs = {}
     for local_index, db_index in enumerate(indices):
-        item = json.loads(extracted_lines[local_index])
-        # Extract the relevant fields from the JSON object
-        formatted_title = format_title(item.get("title", ""))
-        # Concatenate the title, description, and features to create the content
-        # The same method was used to create the embeddings in the FAISS index
-        content = item.get("title", "") + " " + ' '.join(item.get("description", [])) + ' '.join(item.get("features", []))
-        # Select first image if available, else use a placeholder image
-        image_url = item.get("images", [{'large':'https://upload.wikimedia.org/wikipedia/commons/0/0a/No-image-available.png'}])[0]['large']
+        print("Preparing celebrity", local_index + 1, "of", len(indices))
+        celeb_key = list(celeb_to_text.keys())[db_index]
+        print("Celebrity : ", celeb_key)
+        celeb_resume_content = celeb_to_text[celeb_key]
+        celeb_name = format_name(celeb_key)
+        image_path = f"{RESUME_FOLDER}/{celeb_key}.png"
+        print(image_path)
+        # Read the image and encode it as base64 so it can be sent directly
+        with open(image_path, "rb") as image_file:
+            image_bytes = image_file.read()
+        encoded_png = base64.b64encode(image_bytes).decode("utf-8")
         # Create a dictionary entry with the relevant fields
-        items[db_index] = {
-            "text":content,
-            "image_url": image_url,
-            "title": formatted_title,
-            "id": item.get("parent_asin", ""),
+        selected_celebs[db_index] = {
+            "name": celeb_name,
+            "png_base64": encoded_png,
+            "resume_content": celeb_resume_content,
         }
     print("Retrieving done.")
-    return items 
+    return selected_celebs
 
-def rerank_items(cohere_client: cohere.Client, top_n: int, query: str, indices: list) -> list:
+def rerank_items(cohere_client: cohere.Client, top_n: int, query: str, indices: list, celeb_to_text: dict) -> list:
     """
-    Rerank the items using Cohere's reranking model.
+    Rerank the celebs using Cohere's reranking model.
     The reranking model uses the query and the items to compute a relevance score for each item.
     The items are then sorted based on the relevance score.
     """
-    items = get_items_from_indices(indices)
+    selected_celebs = get_celebs_from_indices(indices, celeb_to_text)
     # Rerank the items using Cohere
     print("Reranking items...")
     response = cohere_client.rerank(
         query=query,
-        documents=[items[idx]["text"] for idx in items],
+        documents=[selected_celebs[idx]["resume_content"] for idx in selected_celebs],
         top_n=top_n,
         model="rerank-v3.5",
     )
@@ -175,14 +161,12 @@ async def initialize():
     Load the CLIP model, the 2 FAISS vector databases and initialize the OpenAI and Cohere clients.
     """
     text_vector_db = load_vector_db(FAISS_TEXT_VECTOR_DB_PATH)
-    image_vector_db = load_vector_db(FAISS_IMAGE_VECTOR_DB_PATH)
-    clip_model = load_CLIP_model()
+    celeb_to_text = load_dict(CELEB_TO_TEXT_PATH)
     openai_client = OpenAI()
     cohere_client = cohere.ClientV2(COHERE_API_KEY)
     # Store in the app's state
-    app.state.image_vector_db = image_vector_db
     app.state.text_vector_db = text_vector_db
-    app.state.clip_model = clip_model
+    app.state.celeb_to_text = celeb_to_text
     app.state.openai_client = openai_client
     app.state.cohere_client = cohere_client
 
@@ -206,66 +190,28 @@ async def search_items(request: QueryRequest):
         print("==========================")
         print("==========================")
         print(f"STEP 2 - Start: Embedding query: {query}")
-        embedded_query = embed_query(app.state.openai_client, app.state.clip_model, query, "text")
+        embedded_query = embed_query(openai_client=app.state.openai_client, query=query)
         print(f"STEP 2 - End: Query embedded in the following vector: {embedded_query}")
         print("==========================")
         print("==========================")
         print(f"STEP 3 - Start: Retrieving from FAISS index of size {app.state.text_vector_db.ntotal}")
-        indices = retrieve_indices(app.state.text_vector_db, embedded_query, NUMBER_OF_RETRIEVED_ITEMS)
+        indices = retrieve_indices(index=app.state.text_vector_db, query_vector=embedded_query, k=NUMBER_OF_RETRIEVED_ITEMS)
         print(f"STEP 3 - End: Retrieved {NUMBER_OF_RETRIEVED_ITEMS} items")
         print("==========================")
         print("==========================")
         print(f"STEP 4 - Start: Reranking the {NUMBER_OF_RETRIEVED_ITEMS} retrieved items")
-        reranked_indices = rerank_items(app.state.cohere_client, NUMBER_OF_OUTPUT_ITEMS, query, indices)
+        reranked_indices = rerank_items(cohere_client=app.state.cohere_client, top_n=NUMBER_OF_OUTPUT_ITEMS, query=query, indices=indices, celeb_to_text=app.state.celeb_to_text)
         print(f"STEP 4 - End: Reranked the items and outputted the top {NUMBER_OF_OUTPUT_ITEMS} items")
         print("==========================")
         print("==========================")
-        print(f"STEP 5 - Start: Extract attributes of the {NUMBER_OF_OUTPUT_ITEMS} from JSONL file")
-        items = get_items_from_indices(reranked_indices)
+        print(f"STEP 5 - Start: Extract attributes of the {NUMBER_OF_OUTPUT_ITEMS} from /data/resume folder")
+        result_celebs = get_celebs_from_indices(indices=reranked_indices, celeb_to_text=app.state.celeb_to_text)
         print(f"STEP 5 - End: Extracted the attributes of the items")
-        print(f"List of ordered Amazon IDs: {[items[idx]['id'] for idx in reranked_indices]}")
+        print(f"List of ordered celebrity names: {[result_celebs[idx]['name'] for idx in reranked_indices]}")
         print("==========================")
         print("==========================")
         print("TOTAL PROCESS TIME: {:.2f} seconds".format(time.time() - start_time))
-        return [items[idx] for idx in reranked_indices]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Define the endpoint for searching images of items specifically
-@app.post("/image-search")
-async def search_items(request: QueryRequest):
-    """
-    Search for items based on the user's query.
-    Perform the following steps:
-    1. Embed the query using OpenAI's embedding model.
-    2. Retrieve the top N images from the FAISS Image Embedding vector database.
-    4. Get the items from the indices.
-    5. Return the items to the user.
-    """
-    try:
-        start_time = time.time()
-        query = request.query
-        print(f"STEP 1: Received query: {query}")
-        print("==========================")
-        print("==========================")
-        print(f"STEP 2 - Start: Embedding query: {query}")
-        embedded_query = embed_query(app.state.openai_client, app.state.clip_model, query, "image")
-        print(f"STEP 2 - End: Query embedded in the following vector: {embedded_query}")
-        print("==========================")
-        print("==========================")
-        print(f"STEP 3 - Start: Retrieving from FAISS index of size {app.state.image_vector_db.ntotal}")
-        ranked_indices = retrieve_indices(app.state.image_vector_db, embedded_query, NUMBER_OF_OUTPUT_ITEMS)
-        print(f"STEP 3 - End: Retrieved {NUMBER_OF_OUTPUT_ITEMS} items")
-        print("==========================")
-        print("==========================")
-        print(f"STEP 4 - Start: Extract attributes of the {NUMBER_OF_OUTPUT_ITEMS} from JSONL file")
-        items = get_items_from_indices(ranked_indices)
-        print(f"STEP 4 - End: Extracted the attributes of the items")
-        print(f"List of ordered Amazon IDs: {[items[idx]['id'] for idx in ranked_indices]}")
-        print("==========================")
-        print("==========================")
-        print("TOTAL PROCESS TIME: {:.2f} seconds".format(time.time() - start_time))
-        return [items[idx] for idx in ranked_indices]
+        return [result_celebs[idx] for idx in reranked_indices]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

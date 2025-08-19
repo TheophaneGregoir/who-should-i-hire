@@ -10,9 +10,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 ENV PYTHONUNBUFFERED=1
 
 ENV DATA_PATH=/data
-ENV FAISS_TEXT_VECTOR_DB_PATH="/data/faiss_size_100000_text-embedding-3-large.index"
-ENV FAISS_IMAGE_VECTOR_DB_PATH="/data/faiss_size_50000_CLIP.index"
-ENV AMAZON_FASHION_FILE="/data/meta_Amazon_Fashion.jsonl"
+ENV FAISS_TEXT_VECTOR_DB_PATH="/data/faiss_famous_resumes.index"
+ENV CELEB_TO_TEXT_PATH="/data/celeb_to_text.pkl"
+ENV RESUME_FOLDER="/data/resume"
 ENV OPENAI_EMBEDDING_MODEL="text-embedding-3-large"
 
 # Run app.py when the container launches

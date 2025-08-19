@@ -36,11 +36,11 @@ fi
 
 # Build Backend
 echo "🛠️ Building backend Docker image..."
-docker build backend -t theogregoir/semantic-recommender-backend:latest
+docker build backend -t theogregoir/who-should-i-hire-backend:latest
 
 # Build Frontend
 echo "🛠️ Building frontend Docker image..."
-docker build frontend -t theogregoir/semantic-recommender-frontend:latest
+docker build frontend -t theogregoir/who-should-i-hire-frontend:latest
 
 # Run Backend
 echo "🚀 Starting backend container on port 8000..."
@@ -49,7 +49,7 @@ docker run -d --rm \
     --env-file ./backend/.env \
     -v ./backend/data:/data \
     -v ./backend:/app \
-    theogregoir/semantic-recommender-backend:latest
+    theogregoir/who-should-i-hire-backend:latest
 echo "Backend container launched. It will accept incoming calls on http://localhost:8000 !"
 
 # Run Frontend
@@ -57,5 +57,5 @@ echo "🚀 Starting frontend container on port 3000..."
 docker run -d --rm \
   --name semantic-frontend \
   -p 3000:3000 \
-  theogregoir/semantic-recommender-frontend:latest &
+  theogregoir/who-should-i-hire-frontend:latest &
 echo "Frontend container launched. You can access it at http://localhost:3000 !"
