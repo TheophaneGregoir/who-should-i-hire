@@ -11,6 +11,7 @@ function App() {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<ImageItem | null>(null);
 
   const handleSearch = async () => {
     if (!query) return;
@@ -30,8 +31,8 @@ function App() {
 
       const data: ImageItem[] = await response.json();
       setImages(data.slice(0, 20)); // Limit to 20 results
-    } catch (err: any) {
-      setError(err.message || "Something went wrong");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -56,7 +57,7 @@ function App() {
 
       <div className="image-grid">
         {images.map((item, idx) => (
-          <div className="card" key={idx}>
+          <div className="card" key={idx} onClick={() => setSelectedImage(item)}>
             <p>{item.name}</p>
             <img
               src={`data:image/png;base64,${item.png_base64}`}
@@ -65,6 +66,25 @@ function App() {
           </div>
         ))}
       </div>
+
+      {selectedImage && (
+        <div className="modal" onClick={() => setSelectedImage(null)}>
+          <button
+            className="close-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedImage(null);
+            }}
+          >
+            ×
+          </button>
+          <img
+            src={`data:image/png;base64,${selectedImage.png_base64}`}
+            alt={selectedImage.name}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
