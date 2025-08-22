@@ -64,19 +64,58 @@ def load_dict(path: str) -> dict:
     print("Dictionary loaded")
     return data
 
-def embed_query(openai_client: OpenAI, query: str) -> np.ndarray:
+def generate_qualities_and_skills(openai_client: OpenAI, query: str) -> str:
+    """Use ``gpt-5-nano`` to derive 5 qualities and 5 skills from the query."""
+
+    print("Generating qualities and skills with gpt-5-nano...")
+    prompt = (
+        "You are given a candidate profile description.\n" +
+        query +
+        "\n\nRespond strictly in the following format with no extra text:\n" +
+        "Needed qualities:\n" +
+        "- quality 1\n" +
+        "- quality 2\n" +
+        "- quality 3\n" +
+        "- quality 4\n" +
+        "- quality 5\n" +
+        "Needed skills:\n" +
+        "- skill 1\n" +
+        "- skill 2\n" +
+        "- skill 3\n" +
+        "- skill 4\n" +
+        "- skill 5\n" +
+        "\nReplace each placeholder with the appropriate item."
+    )
+    reasoning_response = openai_client.responses.create(
+        model="gpt-5-nano",
+        input=prompt,
+    )
+    print(reasoning_response.output_text)
+    return reasoning_response.output_text
+
+
+def embed_query(openai_client: OpenAI, query: str) -> tuple[np.ndarray, str]:
+    """Generate qualities and skills for the query using ``gpt-5-nano`` and
+    embed that list using OpenAI's embedding model.
+
+    This replaces the previous behaviour where the raw user query was embedded
+    directly. By asking ``gpt-5-nano`` to expand the query into concrete
+    qualities and skills, the resulting embedding captures richer information
+    about the desired candidate profile.
     """
-    Embed the user's query using OpenAI's text embedding model.
-    """
-    print("Start embedding the query...")
-    response = openai_client.embeddings.create(
-        input=query,
+
+    # First, derive the qualities and skills from the query.
+    text_to_embed = generate_qualities_and_skills(openai_client, query)
+    print("gpt-5-nano output obtained. Embedding the result...")
+
+    # Now embed the text returned by ``gpt-5-nano``.
+    embedding_response = openai_client.embeddings.create(
+        input=text_to_embed,
         model=OPENAI_EMBEDDING_MODEL
     )
-    # Get embeddings from the response
-    embeds = np.array(response.data[0].embedding).reshape(1, -1)
-    print(f"Query embedded with model : {OPENAI_EMBEDDING_MODEL}")
-    return embeds
+    embeds = np.array(embedding_response.data[0].embedding).reshape(1, -1)
+    print(f"gpt-5-nano output embedded with model : {OPENAI_EMBEDDING_MODEL}")
+    return embeds, text_to_embed
 
 def retrieve_indices(index: faiss.Index, query_vector: np.ndarray, k: int) -> list:
     """
@@ -177,11 +216,11 @@ async def search_items(request: QueryRequest):
     """
     Search for items based on the user's query.
     Perform the following steps:
-    1. Embed the query using OpenAI's embedding model.
+    1. Use ``gpt-5-nano`` to extract relevant qualities and skills and embed them.
     2. Retrieve the top k items from the FAISS Text Embedding vector database.
     3. Rerank the items using Cohere's reranking model.
     4. Get the items from the indices.
-    5. Return the items to the user.
+    5. Return the reasoning text along with the items to the user.
     """
     try:
         start_time = time.time()
@@ -190,7 +229,7 @@ async def search_items(request: QueryRequest):
         print("==========================")
         print("==========================")
         print(f"STEP 2 - Start: Embedding query: {query}")
-        embedded_query = embed_query(openai_client=app.state.openai_client, query=query)
+        embedded_query, reasoning_text = embed_query(openai_client=app.state.openai_client, query=query)
         print(f"STEP 2 - End: Query embedded in the following vector: {embedded_query}")
         print("==========================")
         print("==========================")
@@ -211,7 +250,7 @@ async def search_items(request: QueryRequest):
         print("==========================")
         print("==========================")
         print("TOTAL PROCESS TIME: {:.2f} seconds".format(time.time() - start_time))
-        return [result_celebs[idx] for idx in reranked_indices]
+        return {"reasoning": reasoning_text, "results": [result_celebs[idx] for idx in reranked_indices]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
