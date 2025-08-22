@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import "./App.css";
 
 type ImageItem = {
@@ -6,12 +6,33 @@ type ImageItem = {
   name: string;
 };
 
+type SearchResponse = {
+  reasoning: string;
+  results: ImageItem[];
+};
+
 function App() {
   const [query, setQuery] = useState("");
   const [images, setImages] = useState<ImageItem[]>([]);
+  const [reasoning, setReasoning] = useState("");
+  const [displayedReasoning, setDisplayedReasoning] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<ImageItem | null>(null);
+
+  useEffect(() => {
+    const text = reasoning.trimStart();
+    setDisplayedReasoning("");
+    if (!text) return;
+    setDisplayedReasoning(text.charAt(0));
+    let i = 1;
+    const interval = setInterval(() => {
+      setDisplayedReasoning((prev) => prev + text.charAt(i));
+      i++;
+      if (i >= text.length) clearInterval(interval);
+    }, 20);
+    return () => clearInterval(interval);
+  }, [reasoning]);
 
   const handleSearch = async () => {
     if (!query) return;
@@ -29,8 +50,9 @@ function App() {
 
       if (!response.ok) throw new Error(`Error ${response.status}`);
 
-      const data: ImageItem[] = await response.json();
-      setImages(data.slice(0, 20)); // Limit to 20 results
+      const data: SearchResponse = await response.json();
+      setReasoning(data.reasoning.trimStart());
+      setImages(data.results.slice(0, 20)); // Limit to 20 results
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -41,6 +63,7 @@ function App() {
   return (
     <div className="app">
       <h1>Who should I hire ?</h1>
+      {reasoning && <pre className="reasoning">{displayedReasoning}</pre>}
       <div className="search-bar">
         <input
           type="text"
