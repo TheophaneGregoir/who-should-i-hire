@@ -67,7 +67,7 @@ function App() {
       <div className="search-bar">
         <input
           type="text"
-          placeholder="Enter your query..."
+          placeholder="Enter job position..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -80,7 +80,11 @@ function App() {
 
       <div className="image-grid">
         {images.map((item, idx) => (
-          <div className="card" key={idx} onClick={() => setSelectedImage(item)}>
+          <div
+            className="card"
+            key={idx}
+            onClick={() => setSelectedImage(item)}
+          >
             <p>{item.name}</p>
             <img
               src={`data:image/png;base64,${item.png_base64}`}
