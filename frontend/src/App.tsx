@@ -6,9 +6,15 @@ type ImageItem = {
   name: string;
 };
 
+type SearchResponse = {
+  reasoning: string;
+  results: ImageItem[];
+};
+
 function App() {
   const [query, setQuery] = useState("");
   const [images, setImages] = useState<ImageItem[]>([]);
+  const [reasoning, setReasoning] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<ImageItem | null>(null);
@@ -29,8 +35,9 @@ function App() {
 
       if (!response.ok) throw new Error(`Error ${response.status}`);
 
-      const data: ImageItem[] = await response.json();
-      setImages(data.slice(0, 20)); // Limit to 20 results
+      const data: SearchResponse = await response.json();
+      setReasoning(data.reasoning);
+      setImages(data.results.slice(0, 20)); // Limit to 20 results
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -41,6 +48,7 @@ function App() {
   return (
     <div className="app">
       <h1>Who should I hire ?</h1>
+      {reasoning && <p>{reasoning}</p>}
       <div className="search-bar">
         <input
           type="text"
