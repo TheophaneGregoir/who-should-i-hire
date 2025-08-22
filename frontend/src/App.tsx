@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import "./App.css";
 
 type ImageItem = {
@@ -15,9 +15,22 @@ function App() {
   const [query, setQuery] = useState("");
   const [images, setImages] = useState<ImageItem[]>([]);
   const [reasoning, setReasoning] = useState("");
+  const [displayedReasoning, setDisplayedReasoning] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<ImageItem | null>(null);
+
+  useEffect(() => {
+    setDisplayedReasoning("");
+    if (!reasoning) return;
+    let i = 0;
+    const interval = setInterval(() => {
+      setDisplayedReasoning((prev) => prev + reasoning.charAt(i));
+      i++;
+      if (i >= reasoning.length) clearInterval(interval);
+    }, 20);
+    return () => clearInterval(interval);
+  }, [reasoning]);
 
   const handleSearch = async () => {
     if (!query) return;
@@ -48,7 +61,7 @@ function App() {
   return (
     <div className="app">
       <h1>Who should I hire ?</h1>
-      {reasoning && <p>{reasoning}</p>}
+      {reasoning && <pre className="reasoning">{displayedReasoning}</pre>}
       <div className="search-bar">
         <input
           type="text"

@@ -69,9 +69,22 @@ def generate_qualities_and_skills(openai_client: OpenAI, query: str) -> str:
 
     print("Generating qualities and skills with gpt-5-nano...")
     prompt = (
-        "Given the following candidate profile description:\n" +
+        "You are given a candidate profile description.\n" +
         query +
-        "\nList 5 relevant qualities and 5 relevant skills for this candidate."
+        "\n\nRespond strictly in the following format with no extra text:\n" +
+        "Needed qualities:\n" +
+        "- quality 1\n" +
+        "- quality 2\n" +
+        "- quality 3\n" +
+        "- quality 4\n" +
+        "- quality 5\n" +
+        "Needed skills:\n" +
+        "- skill 1\n" +
+        "- skill 2\n" +
+        "- skill 3\n" +
+        "- skill 4\n" +
+        "- skill 5\n" +
+        "\nReplace each placeholder with the appropriate item."
     )
     reasoning_response = openai_client.responses.create(
         model="gpt-5-nano",

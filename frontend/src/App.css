@@ -30,6 +30,13 @@ button {
   margin-bottom: 1rem;
 }
 
+.reasoning {
+  white-space: pre-wrap;
+  font-family: inherit;
+  text-align: left;
+  margin-bottom: 1rem;
+}
+
 .image-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(160px, 1fr));
